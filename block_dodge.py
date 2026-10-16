@@ -6,7 +6,7 @@ pygame.init()
 
 WIDTH, HEIGHT = 600, 600
 SCREEN = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Block Dodge")
+pygame.display.set_caption("Block Dodge - Space Physics")
 
 FPS = 60
 BLACK = (0, 0, 0)
@@ -15,13 +15,61 @@ GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 
 CELL = 40
-PLAYER_SIZE = CELL
-PLAYER_STEP = CELL
 ARENA = pygame.Rect(0, 0, WIDTH, HEIGHT)
 
 FONT = pygame.font.Font(None, 28)
 BIG_FONT = pygame.font.Font(None, 60)
 CLOCK = pygame.time.Clock()
+
+
+class Player:
+    def __init__(self):
+        self.pos = pygame.math.Vector2(WIDTH // 2, HEIGHT // 2)
+        self.vel = pygame.math.Vector2(0, 0)
+        self.angle = 0.0
+        self.turn_speed = 120.0
+        self.thrust_accel = 200.0
+        self.drag = 1.0
+        self.size = 18
+
+    def get_vertices(self):
+        nose = self.pos + pygame.math.Vector2(0, -self.size).rotate(self.angle)
+        left = self.pos + pygame.math.Vector2(-self.size * 0.7, self.size * 0.7).rotate(self.angle)
+        right = self.pos + pygame.math.Vector2(self.size * 0.7, self.size * 0.7).rotate(self.angle)
+        return [nose, left, right]
+
+    def update(self, dt, keys):
+        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+            self.angle -= self.turn_speed * dt
+        if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
+            self.angle += self.turn_speed * dt
+
+        forward = pygame.math.Vector2(0, -1).rotate(self.angle)
+        if keys[pygame.K_w] or keys[pygame.K_UP]:
+            self.vel += forward * self.thrust_accel * dt
+        if keys[pygame.K_s] or keys[pygame.K_DOWN]:
+            self.vel -= forward * (self.thrust_accel * 0.5) * dt
+
+        self.vel -= self.vel * self.drag * dt
+        self.pos += self.vel * dt
+
+        margin = 15
+        if self.pos.x < margin:
+            self.pos.x = margin
+            self.vel.x = 0
+        elif self.pos.x > WIDTH - margin:
+            self.pos.x = WIDTH - margin
+            self.vel.x = 0
+
+        if self.pos.y < margin:
+            self.pos.y = margin
+            self.vel.y = 0
+        elif self.pos.y > HEIGHT - margin:
+            self.pos.y = HEIGHT - margin
+            self.vel.y = 0
+
+    def draw(self, surface):
+        pygame.draw.polygon(surface, WHITE, self.get_vertices())
 
 
 class Hazard:
@@ -68,13 +116,40 @@ class Hazard:
         pygame.draw.rect(surface, RED, self.rect)
 
 
+def check_polygon_rect_collision(poly_points, rect):
+    rect_points = [
+        pygame.math.Vector2(rect.left, rect.top),
+        pygame.math.Vector2(rect.right, rect.top),
+        pygame.math.Vector2(rect.right, rect.bottom),
+        pygame.math.Vector2(rect.left, rect.bottom),
+    ]
+
+    for shape in (poly_points, rect_points):
+        for i in range(len(shape)):
+            p1 = shape[i]
+            p2 = shape[(i + 1) % len(shape)]
+            edge = p2 - p1
+            normal = pygame.math.Vector2(-edge.y, edge.x)
+            if normal.length() == 0:
+                continue
+            normal = normal.normalize()
+
+            min_a = min(p.dot(normal) for p in poly_points)
+            max_a = max(p.dot(normal) for p in poly_points)
+            min_b = min(p.dot(normal) for p in rect_points)
+            max_b = max(p.dot(normal) for p in rect_points)
+
+            if max_a < min_b or max_b < min_a:
+                return False
+    return True
+
+
 def draw_text(text, font, color, position):
     SCREEN.blit(font.render(text, True, color), position)
 
 
 def reset_game():
-    player = pygame.Rect(0, 0, PLAYER_SIZE, PLAYER_SIZE)
-    player.center = (WIDTH // 2, HEIGHT // 2)
+    player = Player()
     return player, [], 0.0, 0.0, False
 
 
@@ -88,7 +163,7 @@ def draw_game(player, hazards, score, elapsed, game_over):
     for hazard in hazards:
         hazard.draw(SCREEN)
 
-    pygame.draw.rect(SCREEN, WHITE, player)
+    player.draw(SCREEN)
 
     if game_over:
         title = BIG_FONT.render("GAME OVER", True, WHITE)
@@ -106,12 +181,9 @@ def draw_game(player, hazards, score, elapsed, game_over):
 def main():
     player, hazards, elapsed, spawn_timer, game_over = reset_game()
     running = True
-    move_cooldown = 0.0
-    move_delay = 0.11
 
     while running:
         dt = min(CLOCK.tick(FPS) / 1000.0, 0.04)
-        move_cooldown = max(0.0, move_cooldown - dt)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -121,29 +193,13 @@ def main():
                     running = False
                 elif game_over and event.key == pygame.K_r:
                     player, hazards, elapsed, spawn_timer, game_over = reset_game()
-                    move_cooldown = 0.0
 
         if not game_over:
             elapsed += dt
             score = int(elapsed * 10)
             keys = pygame.key.get_pressed()
 
-            if move_cooldown <= 0:
-                dx = dy = 0
-                if keys[pygame.K_LEFT] or keys[pygame.K_a]:
-                    dx = -PLAYER_STEP
-                elif keys[pygame.K_RIGHT] or keys[pygame.K_d]:
-                    dx = PLAYER_STEP
-                elif keys[pygame.K_UP] or keys[pygame.K_w]:
-                    dy = -PLAYER_STEP
-                elif keys[pygame.K_DOWN] or keys[pygame.K_s]:
-                    dy = PLAYER_STEP
-
-                if dx or dy:
-                    candidate = player.move(dx, dy)
-                    if ARENA.contains(candidate):
-                        player = candidate
-                    move_cooldown = move_delay
+            player.update(dt, keys)
 
             spawn_timer += dt
             spawn_interval = max(0.34, 1.05 - elapsed * 0.009)
@@ -151,9 +207,10 @@ def main():
                 hazards.append(Hazard(elapsed))
                 spawn_timer = 0.0
 
+            player_vertices = player.get_vertices()
             for hazard in hazards:
                 hazard.update(dt)
-                if hazard.rect.colliderect(player):
+                if check_polygon_rect_collision(player_vertices, hazard.rect):
                     game_over = True
 
             hazards = [hazard for hazard in hazards if hazard.alive]
