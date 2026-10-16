@@ -2,7 +2,6 @@ import pygame
 import random
 import sys
 
-# -------------------- Configuration --------------------
 pygame.init()
 
 WIDTH, HEIGHT = 800, 600
@@ -22,7 +21,6 @@ CELL = 30
 PLAYER_SIZE = CELL
 PLAYER_STEP = CELL
 
-# The arena is a rectangle one cell wider and taller than the player.
 ARENA_W = 21 * CELL
 ARENA_H = 15 * CELL
 ARENA = pygame.Rect((WIDTH - ARENA_W) // 2, (HEIGHT - ARENA_H) // 2 + 15,
@@ -41,7 +39,6 @@ class Hazard:
         self.alive = True
 
     def make_rect(self):
-        # Hazards are long bars, moving along only one axis.
         if self.horizontal:
             length = random.randint(3, 6) * CELL
             y = random.randrange(ARENA.top, ARENA.bottom - CELL + 1, CELL)
@@ -95,7 +92,6 @@ def reset_game():
 def draw_game(player, hazards, score, elapsed, game_over):
     SCREEN.fill(BG)
 
-    # Plain text and simple rectangles.
     score_text = FONT.render(f"Score: {score}", True, WHITE)
     SCREEN.blit(score_text, (WIDTH - score_text.get_width() - 20, 15))
     time_text = SMALL_FONT.render(f"Time: {elapsed:.1f}s", True, WHITE)
